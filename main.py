@@ -20,6 +20,10 @@ RENEW_URL = "https://weread.qq.com/web/login/renewal"
 FIX_SYNCKEY_URL = "https://weread.qq.com/web/book/chapterInfos"
 COOKIE_DATA_VARIANTS = [{"rq": "%2Fweb%2Fbook%2Fread", "ql": False},{"rq": "%2Fweb%2Fbook%2Fread", "ql": True},{"rq": "%2Fweb%2Fbook%2Fread"},]
 
+# 续期后最新的完整 cookie（含未截断的 wr_skey），用于回写 GitHub secret
+NEW_CURL_FILE = "new_curl.txt"
+latest_cookies = dict(cookies)
+
 
 def encode_data(data):
     """数据编码"""
@@ -45,8 +49,9 @@ def get_wr_skey():
     for cookie_data in COOKIE_DATA_VARIANTS:
         try:
             response = requests.post(RENEW_URL,headers=headers,cookies=cookies,data=json.dumps(cookie_data, separators=(',', ':')),timeout=10)
-            
+
             if 'wr_skey' in response.cookies:
+                latest_cookies.update(dict(response.cookies))
                 return response.cookies['wr_skey'][:8]
             else:
                 continue
@@ -60,6 +65,25 @@ def get_wr_skey():
 def fix_no_synckey():
     requests.post(FIX_SYNCKEY_URL, headers=headers, cookies=cookies,data=json.dumps({"bookIds":["3300060341"]}, separators=(',', ':')))
 
+
+def save_new_curl():
+    """把续期后的最新 cookie 重组为 curl bash 写入 new_curl.txt，供 workflow 回写 WXREAD_CURL_BASH"""
+    cookie_str = '; '.join(f"{k}={v}" for k, v in latest_cookies.items())
+    parts = [f"curl '{READ_URL}'"]
+    parts += [f"-H '{k}: {v}'" for k, v in headers.items()]
+    parts.append(f"-H 'Cookie: {cookie_str}'")
+    curl_cmd = ' '.join(parts)
+
+    try:
+        with open(NEW_CURL_FILE, encoding='utf-8') as f:
+            if f.read() == curl_cmd:
+                return
+    except OSError:
+        pass
+    with open(NEW_CURL_FILE, 'w', encoding='utf-8') as f:
+        f.write(curl_cmd)
+    logging.info("检测到新 cookie，已生成 new_curl.txt 待回写。")
+
 refresh_print = setup_logging()
 
 def refresh_cookie():
@@ -67,6 +91,7 @@ def refresh_cookie():
     new_skey = get_wr_skey()
     if new_skey:
         cookies['wr_skey'] = new_skey
+        save_new_curl()
         logging.info(f"密钥刷新成功，新密钥：{new_skey[:2]}***")
         logging.info("重新本次阅读。")
     else:

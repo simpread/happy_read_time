@@ -5,3 +5,6 @@ __pycache__/
 # Log files
 logs/
 *.log
+
+# 续期后待回写的 curl（含会话凭证，勿提交）
+new_curl.txt

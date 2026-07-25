@@ -58,6 +58,20 @@ jobs:
         sleep $delay
         python main.py
 
+    - name: Update WXREAD_CURL_BASH secret
+      if: always()
+      env:
+        GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+      run: |
+        if [ -s new_curl.txt ]; then
+          # 清理环境级同名 secret，保证仓库级 WXREAD_CURL_BASH 是唯一生效来源
+          gh secret delete WXREAD_CURL_BASH --repo ${{ github.repository }} --env AutoRead || true
+          gh secret set WXREAD_CURL_BASH --body "$(cat new_curl.txt)" --repo ${{ github.repository }}
+          echo "WXREAD_CURL_BASH 已更新为最新 cookie"
+        else
+          echo "无新 cookie，跳过 secret 更新"
+        fi
+
   keepalive-job:
     name: Keepalive Workflow
     if: ${{ always() }}

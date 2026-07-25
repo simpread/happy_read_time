@@ -31,6 +31,9 @@
 
 - Fork这个仓库，在仓库 **Settings** -> 左侧列表中的 **Secrets and variables** -> **Actions**，然后在右侧的 **Repository secrets** 中添加如下值：
   - `WXREAD_CURL_BASH`：上面抓read接口后转换为curl_bash的数据。
+  - `PAT_TOKEN`：用于运行成功后自动回写更新 `WXREAD_CURL_BASH`，实现cookie滚动续期。创建方式（二选一）：
+    - Fine-grained PAT（推荐）：**Settings** -> **Developer settings** -> **Personal access tokens** -> **Fine-grained tokens**，Repository access 选择本仓库，Repository permissions 中 `Secrets` 设为 **Read and write**；
+    - Classic PAT：勾选 `repo` scope。
   - `PUSH_METHOD`：推送方法，4选1推送方式（pushplus、wxpusher、telegram、serverChan）。
   - `PUSHPLUS_TOKEN` or `WXPUSHER_SPT` or `TELEGRAM_BOT_TOKEN`&`TELEGRAM_CHAT_ID` or `SERVERCHAN_SPT`: 选择推送后填写对应token。
   
@@ -43,6 +46,7 @@
 | key                        | Value                               | 说明                                                         | 属性      |
 | ------------------------- | ---------------------------------- | ------------------------------------------------------------ | --------- |
 | `WXREAD_CURL_BASH`         | `read` 接口 `curl_bash`数据 | **必填**，必须提供有效指令                                   | secrets   |
+| `PAT_TOKEN`                | 个人访问令牌（Secrets读写权限或repo scope） | **必填**，运行成功后自动回写更新`WXREAD_CURL_BASH`，cookie滚动续期无需再手动抓包 | secrets   |
 | `READ_NUM`                 | 阅读次数（每次 30 秒）              | **可选**，阅读时长，默认 20 分钟                           | variables |
 | `PUSH_METHOD`              | `pushplus`/`wxpusher`/`telegram`/`serverchan`    | **可选**，推送方式，4选1，默认不推送                                       |    secrets     |
 | `PUSHPLUS_TOKEN`           | PushPlus 的 token                   | 当 `PUSH_METHOD=pushplus` 时必填，[获取地址](https://www.pushplus.plus/uc.html) | secrets   |
@@ -51,6 +55,8 @@
 | `SERVERCHAN_SPT`          | serverchan 的 SendKey               | 当 `PUSH_METHOD=serverchan` 时必填，[获取地址](https://sct.ftqq.com/sendkey) | secrets   |
 
 **重要：除了READ_NUM配置在varables，其它的都配置在secrets里面的；需要推送`PUSH_METHOD`是必填的。**
+
+**Cookie自动续期说明：每次运行成功续期后，脚本会生成 `new_curl.txt`，workflow 通过 `PAT_TOKEN` 自动把最新cookie回写到 `WXREAD_CURL_BASH`，下次运行基于新cookie继续续期，形成滚动链条。首次配置时请确保 `WXREAD_CURL_BASH` 中的cookie仍然有效；若收到失败推送再重新抓包配置一次即可。建议 PAT 创建时选择不过期（No expiration），否则 PAT 到期后回写会失败。**
 
 ### 视频教程
 
