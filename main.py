@@ -103,12 +103,18 @@ def refresh_cookie():
 refresh_cookie()
 index = 1
 lastTime = int(time.time()) - 30
+readSeconds = 0
+# 每次运行读两本书：前半程读一本，后半程换一本，章节各自从随机起点顺序往后读
+half = (READ_NUM + 1) // 2
+current_books = random.sample(book, 2)
+chapter_starts = [random.randint(0, len(chapter) - 1) for _ in range(2)]
 logging.info(f"一共需要阅读 {READ_NUM} 次。")
 
 while index <= READ_NUM:
     data.pop('s')
-    data['b'] = random.choice(book)
-    data['c'] = random.choice(chapter)
+    seg = 0 if index <= half else 1
+    data['b'] = current_books[seg]
+    data['c'] = chapter[(chapter_starts[seg] + index - 1 - seg * half) % len(chapter)]
     thisTime = int(time.time())
     data['ct'] = thisTime
     data['rt'] = thisTime - lastTime
@@ -117,7 +123,7 @@ while index <= READ_NUM:
     data['sg'] = hashlib.sha256(f"{data['ts']}{data['rn']}{KEY}".encode()).hexdigest()
     data['s'] = cal_hash(encode_data(data))
 
-    refresh_print(f"阅读进度: 第 {index}/{READ_NUM} 次，已完成 {(index - 1) * 0.5:.1f} 分钟")
+    refresh_print(f"阅读进度: 第 {index}/{READ_NUM} 次，已完成 {readSeconds / 60:.1f} 分钟")
     logging.debug("data: %s", data)
     response = requests.post(READ_URL, headers=headers, cookies=cookies, data=json.dumps(data, separators=(',', ':')))
     resData = response.json()
@@ -125,10 +131,11 @@ while index <= READ_NUM:
 
     if 'succ' in resData:
         if 'synckey' in resData:
+            readSeconds += data['rt']
             lastTime = thisTime
             index += 1
-            time.sleep(30)
-            refresh_print(f"阅读进度: 第 {min(index, READ_NUM + 1) - 1}/{READ_NUM} 次，已完成 {(index - 1) * 0.5:.1f} 分钟")
+            time.sleep(random.randint(28, 45))
+            refresh_print(f"阅读进度: 第 {min(index, READ_NUM + 1) - 1}/{READ_NUM} 次，已完成 {readSeconds / 60:.1f} 分钟")
         else:
             logging.warning("无 synckey，尝试修复...")
             fix_no_synckey()
@@ -140,6 +147,6 @@ logging.info("阅读脚本已完成。")
 
 if PUSH_METHOD not in (None, ''):
     logging.info("开始推送...")
-    push(f"微信读书自动阅读完成。\n阅读时长：{(index - 1) * 0.5} 分钟。", PUSH_METHOD, is_success=True)
+    push(f"微信读书自动阅读完成。\n阅读时长：{readSeconds / 60:.1f} 分钟。", PUSH_METHOD, is_success=True)
 else:
     logging.info("未配置推送渠道，跳过推送。")

@@ -47,7 +47,7 @@
 | ------------------------- | ---------------------------------- | ------------------------------------------------------------ | --------- |
 | `WXREAD_CURL_BASH`         | `read` 接口 `curl_bash`数据 | **必填**，必须提供有效指令                                   | secrets   |
 | `PAT_TOKEN`                | 个人访问令牌（Secrets读写权限或repo scope） | **必填**，运行成功后自动回写更新`WXREAD_CURL_BASH`，cookie滚动续期无需再手动抓包 | secrets   |
-| `READ_NUM`                 | 阅读次数（每次 30 秒）              | **可选**，阅读时长，默认 20 分钟                           | variables |
+| `READ_NUM`                 | 阅读次数（每次约 30 秒，28–45 秒随机） | **可选**，阅读时长，默认 20 分钟                           | variables |
 | `PUSH_METHOD`              | `pushplus`/`wxpusher`/`telegram`/`serverchan`    | **可选**，推送方式，4选1，默认不推送                                       |    secrets     |
 | `PUSHPLUS_TOKEN`           | PushPlus 的 token                   | 当 `PUSH_METHOD=pushplus` 时必填，[获取地址](https://www.pushplus.plus/uc.html) | secrets   |
 | `WXPUSHER_SPT`             | WxPusher 的token                    | 当 `PUSH_METHOD=wxpusher` 时必填，[获取地址](https://wxpusher.zjiecode.com/docs/#/?id=获取spt) | secrets   |
@@ -77,7 +77,7 @@ steps4：测试：`docker exec -it wxread python /app/main.py`
 ***
 ## Attention 📢
 
-1. **签到次数调整**：只需签到完成挑战赛可以将`num`次数从120调整为2，每次`num`为30秒，200即100分钟。
+1. **签到次数调整**：只需签到完成挑战赛可以将`num`次数从120调整为2，每次`num`约30秒（28–45秒随机），200即约100分钟。
    
 2. **解决阅读时间问题**：对于issue中提出的“阅读时间没有增加”，“增加时间与刷的时间不对等”建议保留`config.py`中的【data】字段，默认阅读三体，其它书籍自行测试。
 
