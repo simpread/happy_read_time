@@ -19,6 +19,12 @@ READ_URL = "https://weread.qq.com/web/book/read"
 RENEW_URL = "https://weread.qq.com/web/login/renewal"
 FIX_SYNCKEY_URL = "https://weread.qq.com/web/book/chapterInfos"
 COOKIE_DATA_VARIANTS = [{"rq": "%2Fweb%2Fbook%2Fread", "ql": False},{"rq": "%2Fweb%2Fbook%2Fread", "ql": True},{"rq": "%2Fweb%2Fbook%2Fread"},]
+# 续期整体重试轮数（每轮遍历全部 payload 变体，轮间随机退避，防止瞬态抖动导致整轮失败）
+RENEW_MAX_ROUNDS = 3
+# 无 synckey 时连续修复的最大次数，防止死循环
+NO_SYNCKEY_MAX_RETRY = 5
+# 阅读请求连续失败的最大重试次数，超过则推送失败并终止
+READ_MAX_RETRY = 5
 
 # 续期后最新的完整 cookie（含未截断的 wr_skey），用于回写 GitHub secret
 NEW_CURL_FILE = "new_curl.txt"
@@ -45,25 +51,33 @@ def cal_hash(input_string):
     return hex(_7032f5 + _cc1055)[2:].lower()
 
 def get_wr_skey():
-    """刷新cookie密钥"""
-    for cookie_data in COOKIE_DATA_VARIANTS:
-        try:
-            response = requests.post(RENEW_URL,headers=headers,cookies=cookies,data=json.dumps(cookie_data, separators=(',', ':')),timeout=10)
+    """刷新cookie密钥：每轮遍历全部 payload 变体，失败时按轮退避重试"""
+    for round_no in range(1, RENEW_MAX_ROUNDS + 1):
+        for cookie_data in COOKIE_DATA_VARIANTS:
+            try:
+                response = requests.post(RENEW_URL,headers=headers,cookies=cookies,data=json.dumps(cookie_data, separators=(',', ':')),timeout=10)
 
-            if 'wr_skey' in response.cookies:
-                latest_cookies.update(dict(response.cookies))
-                return response.cookies['wr_skey'][:8]
-            else:
+                if 'wr_skey' in response.cookies:
+                    latest_cookies.update(dict(response.cookies))
+                    return response.cookies['wr_skey'][:8]
+                else:
+                    continue
+            except requests.RequestException as exc:
+                logging.warning(f"refresh_cookie 请求失败，payload={cookie_data}，原因：{exc}")
                 continue
-        except requests.RequestException as exc:
-            logging.warning(f"refresh_cookie 请求失败，payload={cookie_data}，原因：{exc}")
-            continue
-        
-        
+        if round_no < RENEW_MAX_ROUNDS:
+            sleep_time = random.randint(30, 60)
+            logging.warning(f"第 {round_no}/{RENEW_MAX_ROUNDS} 轮续期未拿到新密钥，{sleep_time} 秒后重试...")
+            time.sleep(sleep_time)
+
     return None
 
 def fix_no_synckey():
-    requests.post(FIX_SYNCKEY_URL, headers=headers, cookies=cookies,data=json.dumps({"bookIds":["3300060341"]}, separators=(',', ':')))
+    """无 synckey 时尝试修复：尽力而为，失败仅记录日志，由调用方的重试上限兜底"""
+    try:
+        requests.post(FIX_SYNCKEY_URL, headers=headers, cookies=cookies,data=json.dumps({"bookIds":["3300060341"]}, separators=(',', ':')), timeout=10)
+    except requests.RequestException as exc:
+        logging.warning(f"fix_no_synckey 请求失败：{exc}")
 
 
 def save_new_curl():
@@ -104,6 +118,8 @@ refresh_cookie()
 index = 1
 lastTime = int(time.time()) - 30
 readSeconds = 0
+no_synckey_count = 0
+read_fail_count = 0
 # 每次运行读两本书：前半程读一本，后半程换一本，章节各自从随机起点顺序往后读
 half = (READ_NUM + 1) // 2
 current_books = random.sample(book, 2)
@@ -125,20 +141,42 @@ while index <= READ_NUM:
 
     refresh_print(f"阅读进度: 第 {index}/{READ_NUM} 次，已完成 {readSeconds / 60:.1f} 分钟")
     logging.debug("data: %s", data)
-    response = requests.post(READ_URL, headers=headers, cookies=cookies, data=json.dumps(data, separators=(',', ':')))
-    resData = response.json()
+    try:
+        response = requests.post(READ_URL, headers=headers, cookies=cookies, data=json.dumps(data, separators=(',', ':')), timeout=10)
+        resData = response.json()
+    except requests.RequestException as exc:
+        # 网络瞬态异常：有限次退避重试，连续失败则推送失败并终止
+        read_fail_count += 1
+        if read_fail_count > READ_MAX_RETRY:
+            ERROR_CODE = f"阅读请求重试 {READ_MAX_RETRY} 次后仍失败，终止运行。原因：{exc}"
+            logging.error(ERROR_CODE)
+            push(ERROR_CODE, PUSH_METHOD, is_success=False)
+            raise Exception(ERROR_CODE)
+        sleep_time = random.randint(30, 60)
+        logging.warning(f"阅读请求失败（第 {read_fail_count}/{READ_MAX_RETRY} 次）：{exc}，{sleep_time} 秒后重试...")
+        time.sleep(sleep_time)
+        continue
+    read_fail_count = 0
     logging.debug("response: %s", resData)
 
     if 'succ' in resData:
         if 'synckey' in resData:
+            no_synckey_count = 0
             readSeconds += data['rt']
             lastTime = thisTime
             index += 1
             time.sleep(random.randint(28, 45))
             refresh_print(f"阅读进度: 第 {min(index, READ_NUM + 1) - 1}/{READ_NUM} 次，已完成 {readSeconds / 60:.1f} 分钟")
         else:
-            logging.warning("无 synckey，尝试修复...")
+            no_synckey_count += 1
+            if no_synckey_count > NO_SYNCKEY_MAX_RETRY:
+                ERROR_CODE = f"连续 {NO_SYNCKEY_MAX_RETRY} 次修复仍无 synckey，终止运行。"
+                logging.error(ERROR_CODE)
+                push(ERROR_CODE, PUSH_METHOD, is_success=False)
+                raise Exception(ERROR_CODE)
+            logging.warning(f"无 synckey（第 {no_synckey_count}/{NO_SYNCKEY_MAX_RETRY} 次），尝试修复...")
             fix_no_synckey()
+            time.sleep(random.randint(28, 45))
     else:
         logging.warning("cookie 已过期，尝试刷新...")
         refresh_cookie()

@@ -13,15 +13,13 @@ ENV PATH="/usr/local/bin:${PATH}"
 
 # 复制项目文件
 # COPY main.py push.py config.py ./
-COPY main.py push.py config.py log_utils.py ./
+COPY main.py push.py config.py log_utils.py requirements.txt ./
 
 # 创建日志目录并设置权限
 RUN mkdir -p /app/logs && chmod 777 /app/logs
 
 # 安装 Python 依赖
-RUN pip install --no-cache-dir \
-    requests>=2.32.3 \
-    urllib3>=2.2.3
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 创建 cron 任务（每天凌晨1点执行）
 RUN echo "0 1 * * * cd /app && /usr/local/bin/python3 main.py >> /app/logs/\$(date +\%Y-\%m-\%d).log 2>&1" > /etc/cron.d/wxread-cron
