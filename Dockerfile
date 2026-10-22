@@ -18,10 +18,5 @@ RUN mkdir -p /app/logs && chmod 777 /app/logs
 # 安装 Python 依赖（版本在 requirements.txt 中锁定）
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 创建 cron 任务（每天凌晨1点执行）
-RUN echo "0 1 * * * cd /app && /usr/local/bin/python3 main.py >> /app/logs/\$(date +\%Y-\%m-\%d).log 2>&1" > /etc/cron.d/wxread-cron
-RUN chmod 0644 /etc/cron.d/wxread-cron
-RUN crontab /etc/cron.d/wxread-cron
-
-# 启动命令
+# 启动命令（由 scheduler.py 按 CRON_SCHEDULE 调度执行 main.py）
 CMD ["python", "scheduler.py"]
