@@ -8,3 +8,8 @@ logs/
 
 # 续期后待回写的 curl（含会话凭证，勿提交）
 new_curl.txt
+
+# Environment files
+.env
+.env.local
+.env.*.local

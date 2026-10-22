@@ -7,18 +7,15 @@ WORKDIR /app
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# 安装 cron
-RUN apt-get update && apt-get install -y cron && rm -rf /var/lib/apt/lists/*
 ENV PATH="/usr/local/bin:${PATH}"
 
 # 复制项目文件
-# COPY main.py push.py config.py ./
-COPY main.py push.py config.py log_utils.py requirements.txt ./
+COPY main.py push.py config.py log_utils.py scheduler.py requirements.txt ./
 
 # 创建日志目录并设置权限
 RUN mkdir -p /app/logs && chmod 777 /app/logs
 
-# 安装 Python 依赖
+# 安装 Python 依赖（版本在 requirements.txt 中锁定）
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 创建 cron 任务（每天凌晨1点执行）
@@ -27,4 +24,4 @@ RUN chmod 0644 /etc/cron.d/wxread-cron
 RUN crontab /etc/cron.d/wxread-cron
 
 # 启动命令
-CMD ["sh", "-c", "service cron start && tail -f /dev/null"]
+CMD ["python", "scheduler.py"]
