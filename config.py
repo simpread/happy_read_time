@@ -23,7 +23,15 @@ SERVERCHAN_SPT = "" or os.getenv("SERVERCHAN_SPT")
 
 
 # read接口的bash命令，本地部署时可对应替换headers、cookies
+CURL_FILE = os.getenv('WXREAD_CURL_FILE', 'new_curl.txt')
 curl_str = os.getenv('WXREAD_CURL_BASH')
+try:
+    with open(CURL_FILE, encoding='utf-8') as f:
+        saved_curl = f.read().strip()
+    if saved_curl:
+        curl_str = saved_curl
+except OSError:
+    pass
 
 # headers、cookies是一个省略模版，本地或者docker部署时对应替换
 cookies = {

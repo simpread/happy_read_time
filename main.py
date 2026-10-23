@@ -1,14 +1,16 @@
 # main.py 主逻辑：包括字段拼接、模拟请求
 import json
+import os
 import time
 import random
 import logging
 import hashlib
+import tempfile
 import requests
 import urllib.parse
 from push import push
 from log_utils import setup_logging
-from config import data, headers, cookies, READ_NUM, PUSH_METHOD, book, chapter
+from config import data, headers, cookies, READ_NUM, PUSH_METHOD, book, chapter, CURL_FILE
 
 # 阅读次数在 ±20% 范围内随机
 READ_NUM = random.randint(int(READ_NUM * 0.8), int(READ_NUM * 1.2))
@@ -28,8 +30,8 @@ NO_SYNCKEY_MAX_RETRY = 5
 READ_MAX_RETRY = 5
 AUTH_ERROR_CODES = {-2012, -2013}
 
-# 续期后最新的完整 cookie（含未截断的 wr_skey），用于回写 GitHub secret
-NEW_CURL_FILE = "new_curl.txt"
+# 续期后最新的完整 cookie（含未截断的 wr_skey），用于持久化及回写 GitHub Secret
+NEW_CURL_FILE = CURL_FILE
 latest_cookies = dict(cookies)
 
 
@@ -88,7 +90,7 @@ def fix_no_synckey():
 
 
 def save_new_curl():
-    """把续期后的最新 cookie 重组为 curl bash 写入 new_curl.txt，供 workflow 回写 WXREAD_CURL_BASH"""
+    """持久化续期后的完整 cURL，供下次任务读取及 Actions 回写 Secret"""
     cookie_str = '; '.join(f"{k}={v}" for k, v in latest_cookies.items())
     parts = [f"curl '{READ_URL}'"]
     parts += [f"-H '{k}: {v}'" for k, v in headers.items()]
@@ -101,9 +103,22 @@ def save_new_curl():
                 return
     except OSError:
         pass
-    with open(NEW_CURL_FILE, 'w', encoding='utf-8') as f:
-        f.write(curl_cmd)
-    logging.info("检测到新 cookie，已生成 new_curl.txt 待回写。")
+
+    directory = os.path.dirname(os.path.abspath(NEW_CURL_FILE))
+    os.makedirs(directory, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(prefix='.new_curl.', dir=directory, text=True)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(curl_cmd)
+        os.chmod(temp_path, 0o600)
+        os.replace(temp_path, NEW_CURL_FILE)
+    except Exception:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+        raise
+    logging.info("检测到新 cookie，已保存最新 cURL：%s", NEW_CURL_FILE)
 
 refresh_print = setup_logging()
 

@@ -58,33 +58,37 @@
 [![视频教程](https://github.com/user-attachments/assets/ec144869-3dbb-40fe-9bc5-f8bf1b5fce3c)](https://www.bilibili.com/video/BV1kJ6gY3En3/ "点击查看视频")
 
 
-### 方法二： 服务器运行（docker部署）
+### 方法二：服务器 / NAS 运行（Docker 部署）
 
 **步骤1：** 创建 docker-compose.yml 文件
 
 ```yaml
 services:
   wxread:
-    image: ghcr.io/findmover/wxread:latest
+    image: ghcr.io/simpread/happy_read_time:latest
     container_name: wxread
     restart: unless-stopped
 
+    volumes:
+      # 持久化最新 Cookie，容器重建后仍然有效
+      - ./data:/app/data
+
     environment:
       TZ: "Asia/Shanghai"
-      
+
       # 阅读次数（每次 30 秒），默认40为20分钟
-      READ_NUM: 40
-      
-      # 微信读书 curl bash 命令（必需）
+      READ_NUM: "40"
+
+      # 微信读书 curl bash 命令（首次启动必需）
       # 使用 | 表示多行字符串，下一行开始粘贴完整的 curl 命令
       WXREAD_CURL_BASH: |
         curl 'https://weread.qq.com/web/book/read' \
         -H 'accept: application/json, text/plain, */*' \
         .....
-      
+
       # 定时任务时间（Cron 表达式）
       CRON_SCHEDULE: "0 1 * * *"
-      
+
       # 可选配置：推送方式 (pushplus/wxpusher/telegram/serverchan)
       PUSH_METHOD: ""
       # PushPlus 推送配置
@@ -106,21 +110,32 @@ services:
 **步骤2：** 启动容器
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 **步骤3：** 查看日志和测试
 
 ```bash
 # 查看日志
-docker-compose logs -f
+docker compose logs -f
 
-# 测试运行
-docker-compose exec wxread python /app/main.py
+# 测试运行（会真正执行一次阅读）
+docker compose exec wxread python /app/main.py
 ```
 
+**Cookie 自动维护：**
+- 首次启动从 `WXREAD_CURL_BASH` 读取 Cookie；每次续期后，最新完整 cURL 会保存到 `/app/data/new_curl.txt`。
+- 后续定时任务、容器重启和重建都会优先读取该文件，无需手动同步 Cookie。必须挂载 `/app/data`，否则重建容器会丢失已保存的 Cookie。
+- 如需换成重新抓取的 Cookie，先停止容器，删除数据目录中的 `new_curl.txt`，更新 `WXREAD_CURL_BASH` 后重新创建容器。
+- `new_curl.txt` 包含登录凭据，不要分享或提交到 Git；备份 NAS 数据时应按敏感文件处理。
+- 非 Docker 部署可用 `WXREAD_CURL_FILE` 修改保存路径，默认是程序目录下的 `new_curl.txt`。
+
+**极空间设置：**
+- 拉取镜像 `ghcr.io/simpread/happy_read_time:latest`，创建容器时不需要映射端口。
+- 将一个本地文件夹挂载到容器路径 `/app/data`，并按上表配置环境变量，重启策略选择“除非手动停止，否则自动重启”。
+
 **Docker 说明：**
-- 镜像地址：`ghcr.io/findmover/wxread:latest`
+- 镜像地址：`ghcr.io/simpread/happy_read_time:latest`
 - 支持多架构：linux/amd64 和 linux/arm64
 - 推送代码到仓库会自动构建最新镜像
 

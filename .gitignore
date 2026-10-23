@@ -6,8 +6,9 @@ __pycache__/
 logs/
 *.log
 
-# 续期后待回写的 curl（含会话凭证，勿提交）
+# 续期后保存的 curl（含会话凭证，勿提交）
 new_curl.txt
+data/
 
 # Environment files
 .env
